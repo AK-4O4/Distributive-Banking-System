@@ -1,0 +1,84 @@
+#####################################################
+#                    GLOBAL / OS / IDE
+#####################################################
+.DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+ehthumbs.db
+.zed/
+.vscode/
+.idea/
+*.swp
+*.swo
+
+#####################################################
+#                    BACKEND (Python / FastAPI)
+#####################################################
+# Environments
+backend/.venv/
+backend/venv/
+backend/env/
+
+# Secrets
+backend/.env
+backend/.env.*.local
+
+# Compiled Python files
+backend/__pycache__/
+backend/*.py[cod]
+backend/*$py.class
+
+# Testing and Coverage
+backend/.pytest_cache/
+backend/.coverage
+backend/htmlcov/
+backend/coverage.xml
+
+# Type checking
+backend/.mypy_cache/
+backend/.pyre/
+
+#####################################################
+#                    FRONTEND (React / Vite)
+#####################################################
+# Logs
+frontend/logs
+frontend/*.log
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+frontend/pnpm-debug.log*
+frontend/lerna-debug.log*
+
+# Dependencies
+frontend/node_modules/
+
+# Production Builds
+frontend/dist/
+frontend/dist-ssr/
+frontend/build/
+frontend/.vite/
+
+# Environment Variables
+frontend/.env
+frontend/.env.local
+frontend/.env.development.local
+frontend/.env.test.local
+frontend/.env.production.local
+
+# Caches
+frontend/.eslintcache
+frontend/.stylelintcache
+frontend/tsbuildinfo
+
+# Editor directories and files (Frontend Specific)
+frontend/.vscode/*
+frontend/!.vscode/extensions.json
+frontend/.idea
+frontend/.DS_Store
+frontend/*.suo
+frontend/*.ntvs*
+frontend/*.njsproj
+frontend/*.sln
+frontend/*.sw?
