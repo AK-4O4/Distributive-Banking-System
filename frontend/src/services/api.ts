@@ -1,4 +1,7 @@
-import axios, { AxiosInstance } from 'axios';
+import axios from 'axios';
+
+export type Branch = 'north' | 'south' | 'east' | 'west' | 'central';
+export const BRANCHES: Branch[] = ['north', 'south', 'east', 'west', 'central'];
 
 export interface AccountCreate {
     customer_id: string;
@@ -46,32 +49,31 @@ export interface TransactionLogEntry {
     committed_at?: string;
 }
 
-export type Branch = 'north' | 'south' | 'east' | 'west' | 'central';
-export const BRANCHES: Branch[] = ['north', 'south', 'east', 'west', 'central'];
-
-// SECURITY: API key is stored in memory and sent as a header on every request.
-// Never hardcode this — in production it would come from a login flow.
 let _apiKey = 'dev-secret-key-change-in-production';
 
-export function setApiKey(key: string) {
-    _apiKey = key;
-    // Rebuild axios instance with new key
-    _rebuildClient();
-}
-
-let api: AxiosInstance;
+// Use ReturnType to avoid any AxiosInstance type annotation entirely
+let api = axios.create({
+    baseURL: 'http://127.0.0.1:8000',
+    headers: {
+        'Content-Type': 'application/json',
+        'X-API-Key': _apiKey,
+    },
+});
 
 function _rebuildClient() {
     api = axios.create({
         baseURL: 'http://127.0.0.1:8000',
         headers: {
             'Content-Type': 'application/json',
-            // SECURITY: API key injected into every request
             'X-API-Key': _apiKey,
         },
     });
 }
-_rebuildClient();
+
+export function setApiKey(key: string) {
+    _apiKey = key;
+    _rebuildClient();
+}
 
 export const bankingService = {
     checkHealth: async () => {
@@ -82,8 +84,6 @@ export const bankingService = {
         const r = await api.get('/health');
         return r.data as { branches: Record<string, string>; timestamp: string };
     },
-
-    // Accounts
     createAccount: async (data: AccountCreate): Promise<AccountResponse> => {
         const r = await api.post('/accounts/', data);
         return r.data;
@@ -103,8 +103,6 @@ export const bankingService = {
         });
         return r.data;
     },
-
-    // Distributed Queries
     globalQuery: async (req: GlobalQueryRequest) => {
         const r = await api.post('/query/global', req);
         return r.data as {
@@ -119,8 +117,6 @@ export const bankingService = {
         const r = await api.get(`/query/customer/${customerId}`);
         return r.data as { customer_id: string; total_accounts: number; accounts: AccountResponse[] };
     },
-
-    // Transfer
     executeTransfer: async (data: TransferRequest) => {
         const r = await api.post('/transfer/', data);
         return r.data as {
@@ -133,8 +129,6 @@ export const bankingService = {
             idempotent?: boolean;
         };
     },
-
-    // Ledger
     listTransactions: async (state?: string, limit = 50): Promise<TransactionLogEntry[]> => {
         const params: Record<string, unknown> = { limit };
         if (state) params.state = state;
@@ -142,5 +136,3 @@ export const bankingService = {
         return r.data;
     },
 };
-
-export default api;

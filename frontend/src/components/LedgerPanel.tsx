@@ -1,119 +1,207 @@
 import { useState, useEffect, useCallback } from 'react';
-import { bankingService, TransactionLogEntry } from '../services/api';
+import { bankingService, type TransactionLogEntry } from '../services/api';
 
-const STATE_COLORS: Record<string, string> = {
-    PENDING: 'bg-yellow-100 text-yellow-700 border-yellow-200',
-    PREPARED: 'bg-blue-100 text-blue-700 border-blue-200',
-    COMMITTED: 'bg-emerald-100 text-emerald-700 border-emerald-200',
-    ABORTED: 'bg-red-100 text-red-700 border-red-200',
-    COMMIT_FAILED: 'bg-orange-100 text-orange-800 border-orange-200',
+const STATE_META: Record<string, { label: string; color: string; bg: string; border: string }> = {
+  PENDING:       { label: 'Pending',      color: '#fbbf24', bg: 'rgba(251,191,36,0.1)',  border: 'rgba(251,191,36,0.25)' },
+  PREPARED:      { label: 'Prepared',     color: '#60a5fa', bg: 'rgba(59,130,246,0.1)',  border: 'rgba(59,130,246,0.25)' },
+  COMMITTED:     { label: 'Committed',    color: '#34d399', bg: 'rgba(52,211,153,0.1)',  border: 'rgba(52,211,153,0.25)' },
+  ABORTED:       { label: 'Aborted',      color: '#f87171', bg: 'rgba(239,68,68,0.1)',   border: 'rgba(239,68,68,0.25)' },
+  COMMIT_FAILED: { label: 'Commit Failed',color: '#fb923c', bg: 'rgba(249,115,22,0.1)',  border: 'rgba(249,115,22,0.25)' },
 };
 
-export default function LedgerPanel() {
-    const [txns, setTxns] = useState<TransactionLogEntry[]>([]);
-    const [filter, setFilter] = useState('');
-    const [loading, setLoading] = useState(false);
-    const [autoRefresh, setAutoRefresh] = useState(false);
+const BRANCH_META: Record<string, { icon: string; color: string }> = {
+  north:   { icon: '🏔', color: '#38bdf8' },
+  south:   { icon: '🌴', color: '#fbbf24' },
+  east:    { icon: '🌅', color: '#34d399' },
+  west:    { icon: '🌄', color: '#a78bfa' },
+  central: { icon: '🏛', color: '#d4a843' },
+};
 
-    const fetchTxns = useCallback(async () => {
-        setLoading(true);
-        try {
-            const data = await bankingService.listTransactions(filter || undefined, 50);
-            setTxns(data);
-        } catch {
-            // silently fail if backend is down
-        } finally {
-            setLoading(false);
-        }
-    }, [filter]);
+function timeAgo(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins  = Math.floor(diff / 60000);
+  const hours = Math.floor(mins / 60);
+  const days  = Math.floor(hours / 24);
+  if (mins < 1)  return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  if (hours < 24) return `${hours}h ago`;
+  return `${days}d ago`;
+}
 
-    useEffect(() => {
-        fetchTxns();
-    }, [fetchTxns]);
+interface LedgerPanelProps {
+  limit?: number;
+}
 
-    useEffect(() => {
-        if (!autoRefresh) return;
-        const id = setInterval(fetchTxns, 3000);
-        return () => clearInterval(id);
-    }, [autoRefresh, fetchTxns]);
+export default function LedgerPanel({ limit = 50 }: LedgerPanelProps) {
+  const [txns, setTxns]           = useState<TransactionLogEntry[]>([]);
+  const [filter, setFilter]       = useState('');
+  const [loading, setLoading]     = useState(false);
+  const [autoRefresh, setAuto]    = useState(false);
+  const [expanded, setExpanded]   = useState<string | null>(null);
 
-    return (
-        <div className="space-y-3">
-            <div className="flex items-center gap-2">
-                <select
-                    value={filter}
-                    onChange={e => setFilter(e.target.value)}
-                    className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm focus:border-slate-400 outline-none"
-                >
-                    <option value="">All States</option>
-                    <option value="PENDING">PENDING</option>
-                    <option value="PREPARED">PREPARED</option>
-                    <option value="COMMITTED">COMMITTED</option>
-                    <option value="ABORTED">ABORTED</option>
-                    <option value="COMMIT_FAILED">COMMIT_FAILED</option>
-                </select>
+  const fetchTxns = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await bankingService.listTransactions(filter || undefined, limit);
+      setTxns(data);
+    } catch { /* silently fail if backend is down */ }
+    finally { setLoading(false); }
+  }, [filter, limit]);
 
-                <button
-                    onClick={fetchTxns}
-                    disabled={loading}
-                    className="px-3 py-2 rounded-lg border border-slate-200 bg-white text-sm hover:bg-slate-50 transition-colors disabled:opacity-50"
-                >
-                    {loading ? '⟳' : '↻ Refresh'}
-                </button>
+  useEffect(() => { fetchTxns(); }, [fetchTxns]);
+  useEffect(() => {
+    if (!autoRefresh) return;
+    const id = setInterval(fetchTxns, 3000);
+    return () => clearInterval(id);
+  }, [autoRefresh, fetchTxns]);
 
-                <label className="flex items-center gap-1.5 text-sm text-slate-600 cursor-pointer ml-auto">
-                    <input
-                        type="checkbox"
-                        checked={autoRefresh}
-                        onChange={e => setAutoRefresh(e.target.checked)}
-                        className="rounded"
-                    />
-                    Auto (3s)
-                </label>
-            </div>
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-            {txns.length === 0 && !loading && (
-                <p className="text-sm text-slate-400 text-center py-6">No transactions in ledger.</p>
-            )}
+      {/* Controls */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <select
+          className="select"
+          style={{ width: 'auto', minWidth: 180 }}
+          value={filter}
+          onChange={e => setFilter(e.target.value)}
+        >
+          <option value="">All Transactions</option>
+          <option value="PENDING">Pending</option>
+          <option value="PREPARED">Prepared</option>
+          <option value="COMMITTED">Committed</option>
+          <option value="ABORTED">Aborted</option>
+          <option value="COMMIT_FAILED">Commit Failed</option>
+        </select>
 
-            <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
-                {txns.map(tx => (
-                    <div key={tx.id} className="border border-slate-200 rounded-xl p-3 bg-white hover:bg-slate-50 transition-colors">
-                        <div className="flex items-start justify-between gap-2">
-                            <div className="flex items-center gap-2 min-w-0">
-                                <span className={`shrink-0 px-2 py-0.5 rounded-full text-xs font-bold border ${STATE_COLORS[tx.state] ?? 'bg-slate-100 text-slate-600 border-slate-200'}`}>
-                                    {tx.state}
-                                </span>
-                                <span className="text-xs text-slate-500 font-mono truncate">{tx.id}</span>
-                            </div>
-                            {tx.amount != null && (
-                                <span className="shrink-0 text-sm font-bold text-slate-800 font-mono">
-                                    ${tx.amount.toFixed(2)}
-                                </span>
-                            )}
-                        </div>
+        <button onClick={fetchTxns} disabled={loading} className="btn btn-ghost">
+          {loading ? '⟳' : '↻ Refresh'}
+        </button>
 
-                        {tx.source_branch && tx.target_branch && (
-                            <div className="mt-2 flex items-center gap-2 text-xs text-slate-600">
-                                <span className="px-1.5 py-0.5 bg-slate-100 rounded font-semibold">{tx.source_branch}</span>
-                                <span>→</span>
-                                <span className="px-1.5 py-0.5 bg-slate-100 rounded font-semibold">{tx.target_branch}</span>
-                            </div>
-                        )}
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto', fontSize: '0.8rem', color: 'var(--t-secondary)', cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={autoRefresh}
+            onChange={e => setAuto(e.target.checked)}
+            style={{ accentColor: 'var(--c-gold-500)', width: 14, height: 14 }}
+          />
+          Live (3s)
+        </label>
+      </div>
 
-                        {tx.error && (
-                            <p className="mt-1.5 text-xs text-red-600 bg-red-50 rounded px-2 py-1">{tx.error}</p>
-                        )}
+      {/* State legend */}
+      <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
+        {Object.entries(STATE_META).map(([k, m]) => (
+          <button
+            key={k}
+            onClick={() => setFilter(filter === k ? '' : k)}
+            style={{
+              padding: '3px 10px', borderRadius: 99, fontSize: '0.62rem', fontWeight: 800,
+              letterSpacing: '0.05em', cursor: 'pointer', border: `1px solid ${m.border}`,
+              background: filter === k ? m.bg : 'transparent',
+              color: filter === k ? m.color : 'var(--t-faint)',
+              transition: 'all 0.15s',
+            }}
+          >
+            {m.label.toUpperCase()}
+          </button>
+        ))}
+      </div>
 
-                        {tx.created_at && (
-                            <p className="mt-1 text-xs text-slate-400">
-                                {new Date(tx.created_at).toLocaleString()}
-                                {tx.committed_at && ` → committed ${new Date(tx.committed_at).toLocaleString()}`}
-                            </p>
-                        )}
+      <div className="divider" />
+
+      {/* Empty state */}
+      {txns.length === 0 && !loading && (
+        <p style={{ textAlign: 'center', padding: '32px 0', color: 'var(--t-faint)', fontSize: '0.9rem' }}>
+          No transactions found.
+        </p>
+      )}
+
+      {/* Timeline */}
+      <div style={{
+        display: 'flex', flexDirection: 'column', gap: 8,
+        maxHeight: limit <= 5 ? 320 : 500, overflowY: 'auto', paddingRight: 4,
+      }}>
+        {txns.map(tx => {
+          const sm = STATE_META[tx.state] ?? STATE_META['ABORTED'];
+          const isOpen = expanded === tx.id;
+
+          return (
+            <div
+              key={tx.id}
+              onClick={() => setExpanded(isOpen ? null : tx.id)}
+              className="glass-sm"
+              style={{
+                padding: '14px 18px', cursor: 'pointer',
+                borderColor: isOpen ? sm.border : undefined,
+                transition: 'border-color 0.2s',
+              }}
+            >
+              {/* Row */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                  <span style={{
+                    flexShrink: 0, padding: '3px 11px', borderRadius: 99, fontSize: '0.62rem',
+                    fontWeight: 800, letterSpacing: '0.04em',
+                    background: sm.bg, color: sm.color, border: `1px solid ${sm.border}`,
+                  }}>
+                    {sm.label.toUpperCase()}
+                  </span>
+
+                  {/* Branch route */}
+                  {tx.source_branch && tx.target_branch && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.78rem' }}>
+                      <span style={{ color: BRANCH_META[tx.source_branch]?.color ?? '#94a3b8', fontWeight: 700 }}>
+                        {BRANCH_META[tx.source_branch]?.icon} {tx.source_branch}
+                      </span>
+                      <span style={{ color: 'var(--t-faint)' }}>→</span>
+                      <span style={{ color: BRANCH_META[tx.target_branch]?.color ?? '#94a3b8', fontWeight: 700 }}>
+                        {BRANCH_META[tx.target_branch]?.icon} {tx.target_branch}
+                      </span>
                     </div>
-                ))}
+                  )}
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexShrink: 0 }}>
+                  {tx.amount != null && (
+                    <span className="mono" style={{ fontSize: '0.95rem', fontWeight: 800, color: 'var(--t-primary)' }}>
+                      ${tx.amount.toFixed(2)}
+                    </span>
+                  )}
+                  {tx.created_at && (
+                    <span style={{ fontSize: '0.68rem', color: 'var(--t-faint)' }}>
+                      {timeAgo(tx.created_at)}
+                    </span>
+                  )}
+                  <span style={{ color: 'var(--t-faint)', fontSize: '0.7rem' }}>{isOpen ? '▲' : '▼'}</span>
+                </div>
+              </div>
+
+              {/* Expanded detail */}
+              {isOpen && (
+                <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                  <p className="mono" style={{ fontSize: '0.68rem', color: 'var(--t-faint)', wordBreak: 'break-all', marginBottom: 8 }}>
+                    TX ID: {tx.id}
+                  </p>
+                  {tx.error && (
+                    <div className="alert alert-error" style={{ fontSize: '0.75rem', padding: '8px 12px', marginBottom: 8 }}>
+                      {tx.error}
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', gap: 20, fontSize: '0.72rem', color: 'var(--t-secondary)', flexWrap: 'wrap' }}>
+                    {tx.created_at && (
+                      <span>Initiated: {new Date(tx.created_at).toLocaleString()}</span>
+                    )}
+                    {tx.committed_at && (
+                      <span style={{ color: '#34d399' }}>Settled: {new Date(tx.committed_at).toLocaleString()}</span>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
-        </div>
-    );
+          );
+        })}
+      </div>
+    </div>
+  );
 }
