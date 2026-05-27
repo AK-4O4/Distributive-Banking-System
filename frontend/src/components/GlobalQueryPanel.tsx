@@ -10,11 +10,11 @@ interface QueryResult {
 }
 
 const BRANCH_BADGE: Record<string, { color: string; bg: string; border: string; icon: string }> = {
-  north:   { color: '#38bdf8', bg: 'rgba(56,189,248,0.1)',  border: 'rgba(56,189,248,0.25)',  icon: '🏔' },
-  south:   { color: '#fbbf24', bg: 'rgba(251,191,36,0.1)',  border: 'rgba(251,191,36,0.25)',  icon: '🌴' },
-  east:    { color: '#34d399', bg: 'rgba(52,211,153,0.1)',  border: 'rgba(52,211,153,0.25)',  icon: '🌅' },
-  west:    { color: '#a78bfa', bg: 'rgba(167,139,250,0.1)', border: 'rgba(167,139,250,0.25)', icon: '🌄' },
-  central: { color: '#d4a843', bg: 'rgba(212,168,67,0.1)',  border: 'rgba(212,168,67,0.25)',  icon: '🏛' },
+  NORTH:   { color: '#38bdf8', bg: 'rgba(56,189,248,0.1)',  border: 'rgba(56,189,248,0.25)',  icon: '🏔' },
+  SOUTH:   { color: '#fbbf24', bg: 'rgba(251,191,36,0.1)',  border: 'rgba(251,191,36,0.25)',  icon: '🌴' },
+  EAST:    { color: '#34d399', bg: 'rgba(52,211,153,0.1)',  border: 'rgba(52,211,153,0.25)',  icon: '🌅' },
+  WEST:    { color: '#a78bfa', bg: 'rgba(167,139,250,0.1)', border: 'rgba(167,139,250,0.25)', icon: '🌄' },
+  CENTRAL: { color: '#d4a843', bg: 'rgba(212,168,67,0.1)',  border: 'rgba(212,168,67,0.25)',  icon: '🏛' },
 };
 
 const STATUS_STYLE: Record<string, { color: string; bg: string }> = {
@@ -161,7 +161,7 @@ export default function GlobalQueryPanel() {
                 </thead>
                 <tbody>
                   {result.accounts.map(a => {
-                    const bm = BRANCH_BADGE[a.branch_id] ?? { color: '#94a3b8', bg: 'rgba(148,163,184,0.1)', border: 'rgba(148,163,184,0.2)', icon: '🏦' };
+                    const bm = BRANCH_BADGE[a.branch] ?? { color: '#94a3b8', bg: 'rgba(148,163,184,0.1)', border: 'rgba(148,163,184,0.2)', icon: '🏦' };
                     const sm = STATUS_STYLE[a.status] ?? STATUS_STYLE['INACTIVE'];
                     return (
                       <tr key={a.id}>
@@ -171,11 +171,11 @@ export default function GlobalQueryPanel() {
                             padding: '3px 10px', borderRadius: 99, fontSize: '0.7rem', fontWeight: 700,
                             background: bm.bg, color: bm.color, border: `1px solid ${bm.border}`,
                           }}>
-                            {bm.icon} {a.branch_id}
+                            {bm.icon} {a.branch}
                           </span>
                         </td>
                         <td>
-                          <p style={{ margin: 0, fontWeight: 600, color: 'var(--t-primary)' }}>{a.customer_name}</p>
+                          <p style={{ margin: 0, fontWeight: 600, color: 'var(--t-primary)' }}>{a.account_title || a.customer_id}</p>
                           <p className="mono" style={{ margin: 0, fontSize: '0.68rem', color: 'var(--t-faint)' }}>{a.customer_id}</p>
                         </td>
                         <td style={{ textAlign: 'right' }}>

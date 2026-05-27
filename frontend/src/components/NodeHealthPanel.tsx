@@ -7,11 +7,11 @@ interface HealthData {
 }
 
 const BRANCHES_META = [
-  { key: 'north',   icon: '🏔', color: '#38bdf8' },
-  { key: 'south',   icon: '🌴', color: '#fbbf24' },
-  { key: 'east',    icon: '🌅', color: '#34d399' },
-  { key: 'west',    icon: '🌄', color: '#a78bfa' },
-  { key: 'central', icon: '🏛', color: '#d4a843' },
+  { key: 'NORTH',   icon: '🏔', color: '#38bdf8' },
+  { key: 'SOUTH',   icon: '🌴', color: '#fbbf24' },
+  { key: 'EAST',    icon: '🌅', color: '#34d399' },
+  { key: 'WEST',    icon: '🌄', color: '#a78bfa' },
+  { key: 'CENTRAL', icon: '🏛', color: '#d4a843' },
 ];
 
 interface NodeHealthPanelProps {
@@ -92,8 +92,8 @@ export default function NodeHealthPanel({ compact = false }: NodeHealthPanelProp
                 background: isOk ? b.color : isUnknown ? 'rgba(148,163,184,0.3)' : '#f87171',
                 boxShadow: isOk ? `0 0 10px ${b.color}66` : 'none',
               }} className={isOk ? 'pulse-dot' : ''} />
-              <span style={{ fontSize: '0.7rem', fontWeight: 700, color: isOk ? 'var(--t-primary)' : 'var(--t-muted)', textAlign: 'center', textTransform: 'capitalize' }}>
-                {b.key}
+              <span style={{ fontSize: '0.7rem', fontWeight: 700, color: isOk ? 'var(--t-primary)' : 'var(--t-muted)', textAlign: 'center' }}>
+                {b.key.charAt(0) + b.key.slice(1).toLowerCase()}
               </span>
               <span className="mono" style={{ fontSize: '0.65rem', color: isOk ? b.color : isUnknown ? 'var(--t-faint)' : '#f87171' }}>
                 {isUnknown ? '—' : isOk ? 'ONLINE' : 'ERROR'}

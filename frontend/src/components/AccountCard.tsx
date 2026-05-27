@@ -3,11 +3,11 @@ import { type AccountResponse } from '../services/api';
 import ManageAccountPanel from './ManageAccountPanel';
 
 const BRANCH_META: Record<string, { icon: string; color: string; bg: string; border: string }> = {
-  north:   { icon: '🏔', color: '#38bdf8', bg: 'rgba(56,189,248,0.08)',  border: 'rgba(56,189,248,0.2)' },
-  south:   { icon: '🌴', color: '#fbbf24', bg: 'rgba(251,191,36,0.08)',  border: 'rgba(251,191,36,0.2)' },
-  east:    { icon: '🌅', color: '#34d399', bg: 'rgba(52,211,153,0.08)',  border: 'rgba(52,211,153,0.2)' },
-  west:    { icon: '🌄', color: '#a78bfa', bg: 'rgba(167,139,250,0.08)', border: 'rgba(167,139,250,0.2)' },
-  central: { icon: '🏛', color: '#d4a843', bg: 'rgba(212,168,67,0.08)',  border: 'rgba(212,168,67,0.2)' },
+  NORTH:   { icon: '🏔', color: '#38bdf8', bg: 'rgba(56,189,248,0.08)',  border: 'rgba(56,189,248,0.2)' },
+  SOUTH:   { icon: '🌴', color: '#fbbf24', bg: 'rgba(251,191,36,0.08)',  border: 'rgba(251,191,36,0.2)' },
+  EAST:    { icon: '🌅', color: '#34d399', bg: 'rgba(52,211,153,0.08)',  border: 'rgba(52,211,153,0.2)' },
+  WEST:    { icon: '🌄', color: '#a78bfa', bg: 'rgba(167,139,250,0.08)', border: 'rgba(167,139,250,0.2)' },
+  CENTRAL: { icon: '🏛', color: '#d4a843', bg: 'rgba(212,168,67,0.08)',  border: 'rgba(212,168,67,0.2)' },
 };
 
 const STATUS_COLORS: Record<string, { color: string; bg: string }> = {
@@ -26,7 +26,7 @@ export default function AccountCard({ account, onUpdated, animClass }: AccountCa
   const [showManage, setShowManage] = useState(false);
   const [current, setCurrent]       = useState(account);
 
-  const bm = BRANCH_META[current.branch_id] ?? { icon: '🏦', color: '#94a3b8', bg: 'rgba(148,163,184,0.05)', border: 'rgba(148,163,184,0.15)' };
+  const bm = BRANCH_META[current.branch] ?? { icon: '🏦', color: '#94a3b8', bg: 'rgba(148,163,184,0.05)', border: 'rgba(148,163,184,0.15)' };
   const sm = STATUS_COLORS[current.status]  ?? STATUS_COLORS['INACTIVE'];
 
   const handleUpdated = (updated: AccountResponse) => {
@@ -50,11 +50,11 @@ export default function AccountCard({ account, onUpdated, animClass }: AccountCa
               {bm.icon}
             </div>
             <div>
-              <p style={{ margin: 0, fontSize: '0.78rem', fontWeight: 700, color: bm.color, textTransform: 'capitalize' }}>
-                {current.branch_id} Branch
+              <p style={{ margin: 0, fontSize: '0.78rem', fontWeight: 700, color: bm.color }}>
+                {current.branch} Branch
               </p>
               <p style={{ margin: 0, fontSize: '0.68rem', color: 'var(--t-faint)' }}>
-                Savings Account
+                {current.account_title || 'Savings Account'}
               </p>
             </div>
           </div>
@@ -79,9 +79,9 @@ export default function AccountCard({ account, onUpdated, animClass }: AccountCa
           )}
         </div>
 
-        {/* Account ID */}
+        {/* Account Number */}
         <p className="mono" style={{ margin: '0 0 14px', fontSize: '0.68rem', color: 'var(--t-faint)', wordBreak: 'break-all' }}>
-          {current.id}
+          {current.account_number || current.id}
         </p>
 
         <div className="divider" style={{ marginBottom: 14 }} />

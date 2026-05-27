@@ -2,14 +2,14 @@ import { useState, useEffect } from 'react';
 import { bankingService, type TransferRequest, type AccountResponse, BRANCHES, type Branch } from '../services/api';
 
 const BRANCH_META: Record<string, { label: string; icon: string; color: string; bg: string; border: string }> = {
-  north:   { label: 'North',   icon: '🏔', color: '#38bdf8', bg: 'rgba(56,189,248,0.07)',  border: 'rgba(56,189,248,0.18)' },
-  south:   { label: 'South',   icon: '🌴', color: '#fbbf24', bg: 'rgba(251,191,36,0.07)',  border: 'rgba(251,191,36,0.18)' },
-  east:    { label: 'East',    icon: '🌅', color: '#34d399', bg: 'rgba(52,211,153,0.07)',  border: 'rgba(52,211,153,0.18)' },
-  west:    { label: 'West',    icon: '🌄', color: '#a78bfa', bg: 'rgba(167,139,250,0.07)', border: 'rgba(167,139,250,0.18)' },
-  central: { label: 'Central', icon: '🏛', color: '#d4a843', bg: 'rgba(212,168,67,0.07)',  border: 'rgba(212,168,67,0.18)' },
+  NORTH:   { label: 'North',   icon: '🏔', color: '#38bdf8', bg: 'rgba(56,189,248,0.07)',  border: 'rgba(56,189,248,0.18)' },
+  SOUTH:   { label: 'South',   icon: '🌴', color: '#fbbf24', bg: 'rgba(251,191,36,0.07)',  border: 'rgba(251,191,36,0.18)' },
+  EAST:    { label: 'East',    icon: '🌅', color: '#34d399', bg: 'rgba(52,211,153,0.07)',  border: 'rgba(52,211,153,0.18)' },
+  WEST:    { label: 'West',    icon: '🌄', color: '#a78bfa', bg: 'rgba(167,139,250,0.07)', border: 'rgba(167,139,250,0.18)' },
+  CENTRAL: { label: 'Central', icon: '🏛', color: '#d4a843', bg: 'rgba(212,168,67,0.07)',  border: 'rgba(212,168,67,0.18)' },
 };
 
-const PHASES = ['PENDING', 'PREPARED', 'COMMITTED'] as const;
+const PHASES = ['INITIATED', 'PREPARED', 'COMMITTED'] as const;
 
 interface TransferFormProps {
   preloadedSourceAccounts?: AccountResponse[];
@@ -18,12 +18,12 @@ interface TransferFormProps {
 export default function TransferForm({ preloadedSourceAccounts = [] }: TransferFormProps) {
   const [formData, setFormData] = useState<TransferRequest>({
     initiator_id:      'banking_portal',
-    source_branch:     'north',
+    source_branch:     'NORTH',
     source_account_id: '',
-    target_branch:     'south',
+    target_branch:     'SOUTH',
     target_account_id: '',
     amount:            0,
-    idempotency_key:   '',
+    idempotency_key:   '',   // auto-generated on submit
   });
   const [status, setStatus] = useState<{
     type: 'idle' | 'loading' | 'success' | 'error';
@@ -41,7 +41,7 @@ export default function TransferForm({ preloadedSourceAccounts = [] }: TransferF
       const active = preloadedSourceAccounts.filter(a => a.status === 'ACTIVE');
       setSourceAccounts(active);
       if (active[0]) {
-        setFormData(f => ({ ...f, source_branch: active[0].branch_id as Branch, source_account_id: active[0].id }));
+        setFormData(f => ({ ...f, source_branch: active[0].branch as Branch, source_account_id: active[0].id }));
       }
     }
   }, [preloadedSourceAccounts]);
@@ -68,8 +68,8 @@ export default function TransferForm({ preloadedSourceAccounts = [] }: TransferF
     setStatus({ type: 'loading', msg: 'Initiating secure transfer…' });
     const payload: TransferRequest = {
       ...formData,
-      idempotency_key: formData.idempotency_key ||
-        `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      idempotency_key: formData.idempotency_key.trim() ||
+        `TF-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     };
     try {
       const res = await bankingService.executeTransfer(payload);
@@ -110,9 +110,8 @@ export default function TransferForm({ preloadedSourceAccounts = [] }: TransferF
               value={branchVal}
               onChange={e => {
                 if (isSrc && preloadedSourceAccounts.length > 0) {
-                  // If customer has preloaded accounts, filter locally
                   const branch = e.target.value as Branch;
-                  const filtered = preloadedSourceAccounts.filter(a => a.branch_id === branch && a.status === 'ACTIVE');
+                  const filtered = preloadedSourceAccounts.filter(a => a.branch === branch && a.status === 'ACTIVE');
                   setSourceAccounts(filtered);
                   setFormData(f => ({ ...f, source_branch: branch, source_account_id: '' }));
                 } else {
@@ -142,7 +141,7 @@ export default function TransferForm({ preloadedSourceAccounts = [] }: TransferF
                 <option value="">Select account…</option>
                 {accounts.map(a => (
                   <option key={a.id} value={a.id}>
-                    {a.customer_name} — ${a.available_balance.toFixed(2)}
+                    {a.account_title} — ${a.available_balance.toFixed(2)}
                   </option>
                 ))}
               </select>
@@ -216,7 +215,7 @@ export default function TransferForm({ preloadedSourceAccounts = [] }: TransferF
         <div>
           <label className="label">
             Reference Key
-            <span style={{ marginLeft: 8, fontWeight: 400, textTransform: 'none', opacity: 0.55 }}>(optional)</span>
+            <span style={{ marginLeft: 8, fontWeight: 400, textTransform: 'none', opacity: 0.55 }}>(optional — auto-generated)</span>
           </label>
           <input
             type="text"

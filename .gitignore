@@ -26,6 +26,7 @@ backend/.env.*.local
 
 # Compiled Python files
 backend/__pycache__/
+backend/routes/__pycache__/
 backend/*.py[cod]
 backend/*$py.class
 

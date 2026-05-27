@@ -1,21 +1,21 @@
 # routes/transfers.py — Two-Phase Commit (2PC) transfer endpoint
-# ───────────────────────────────────────────────────────────────
-# Implements the full 2PC protocol for atomic cross-branch fund transfers.
-#
-# Protocol phases:
-#   Phase 0  — Pre-checks:   validate IDs, idempotency check, verify target
-#   Phase 1  — PREPARE:      lock funds at source (PENDING → PREPARED)
-#   Phase 2a — COMMIT:       debit source locked balance, credit target (PREPARED → COMMITTED)
-#   Phase 2b — ABORT:        compensate (unlock) source funds on any failure (→ ABORTED)
+# ---------------------------------------------------------------
+# Updated for v2 schema:
+#   - Transaction log: "transaction_logs" collection (not global_transactions)
+#   - TX states: INITIATED -> PREPARED -> COMMITTED / ABORTED
+#   - Balances stored/compared as Decimal128 (MongoDB NumberDecimal)
+#   - idempotency_key is now required (min 10 chars, enforced by Pydantic)
+#   - Transaction _id is a custom TXN-... string for readability
 
 import asyncio
+import uuid
 from datetime import datetime, timezone
 
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException
 
 from database import TRANSFER_PROJECTION
-from helpers import get_branch_db, valid_oid
+from helpers import get_branch_db, to_d128, from_d128, valid_oid
 from models import TransferRequest
 from security import rate_limit, require_api_key
 import state
@@ -30,53 +30,60 @@ router = APIRouter(
 @router.post("/", summary="Execute an atomic cross-branch fund transfer via Two-Phase Commit")
 async def process_transfer(req: TransferRequest):
     """
-    TWO-PHASE COMMIT PROTOCOL
-    ─────────────────────────
-    Guarantees atomicity across multiple distributed nodes:
+    TWO-PHASE COMMIT PROTOCOL  (v2)
+    ================================
+    Guarantees atomicity across multiple distributed branch nodes.
+
+    State machine:
+      INITIATED  ->  PREPARED  ->  COMMITTED
+                           \\->  ABORTED   (on failure in any phase)
 
     Phase 0 — Pre-checks
-      · Reject self-transfers (source == target account)
+      · Reject self-transfers
       · Idempotency: if this key was already COMMITTED, return the cached result
-      · Verify the target account exists and is ACTIVE (fail fast before locking funds)
+      · Verify the target account exists and is ACTIVE before locking source funds
 
-    Phase 1 — PREPARE  (PENDING → PREPARED)
-      · Atomic findAndModify on source: only succeeds if status=ACTIVE AND balance≥amount
-      · Deducts from available_balance and adds to locked_balance atomically
-      · No negative balance possible (single atomic operation with $gte guard)
+    Phase 1 — PREPARE  (INITIATED -> PREPARED)
+      · Write INITIATED record to transaction_logs
+      · Atomic findAndModify on source: only succeeds if status=ACTIVE AND balance>=amount
+      · Deducts from available_balance, moves to locked_balance atomically
+      · Advances ledger state to PREPARED
 
-    Phase 2a — COMMIT  (PREPARED → COMMITTED)
+    Phase 2a — COMMIT  (PREPARED -> COMMITTED)
       · asyncio.gather: debit locked_balance at source + credit available_balance at target
-      · Finalize ledger entry as COMMITTED
+      · Finalize transaction_logs entry as COMMITTED
 
-    Phase 2b — ABORT   (PREPARED → ABORTED)
-      · On any exception in Phase 1: compensation write unlocks source funds
+    Phase 2b — ABORT   (-> ABORTED)
+      · On any failure: compensation write unlocks source funds
       · Ledger entry marked ABORTED with error detail
     """
     ledger_db = state.db_instances["ledger"]
     source_db = get_branch_db(req.source_branch)
     target_db = get_branch_db(req.target_branch)
 
-    # ── CONSISTENCY: reject self-transfer ────────────────────────────────────
+    # Reject self-transfer
     if req.source_account_id == req.target_account_id:
         raise HTTPException(status_code=400, detail="Source and target accounts must differ")
 
-    source_oid = ObjectId(req.source_account_id)  # already validated by Pydantic
+    source_oid = ObjectId(req.source_account_id)
     target_oid = ObjectId(req.target_account_id)
+    amount_d128 = to_d128(req.amount)
+    amount_float = float(req.amount)
 
     # ── Phase 0: Idempotency check ───────────────────────────────────────────
-    if req.idempotency_key:
-        existing_tx = await ledger_db.global_transactions.find_one(
-            {"idempotency_key": req.idempotency_key, "state": "COMMITTED"},
-            {"_id": 1},
-        )
-        if existing_tx:
-            return {
-                "message":        "Transfer already committed (idempotent replay).",
-                "transaction_id": str(existing_tx["_id"]),
-                "idempotent":     True,
-            }
+    existing_tx = await ledger_db.transaction_logs.find_one(
+        {"idempotency_key": req.idempotency_key, "state": "COMMITTED"},
+        {"_id": 1},
+    )
+    if existing_tx:
+        return {
+            "message":        "Transfer already committed (idempotent replay).",
+            "transaction_id": str(existing_tx["_id"]),
+            "phase":          "COMMITTED",
+            "idempotent":     True,
+        }
 
-    # ── Phase 0: Verify target is ACTIVE before locking any source funds ─────
+    # ── Phase 0: Verify target account is ACTIVE before locking source funds ─
     target_account = await target_db.accounts.find_one({"_id": target_oid}, TRANSFER_PROJECTION)
     if not target_account:
         raise HTTPException(status_code=404, detail="Target account not found")
@@ -86,47 +93,51 @@ async def process_transfer(req: TransferRequest):
             detail=f"Target account is not ACTIVE (status: {target_account.get('status')})",
         )
 
-    # ── Record PENDING entry in coordinator ledger ───────────────────────────
+    # ── Phase 1: Write INITIATED entry to coordinator ledger ─────────────────
+    tx_id  = f"TXN-{uuid.uuid4().hex[:16].upper()}"
+    now    = datetime.now(timezone.utc)
     tx_doc = {
-        "type":               "CROSS_BRANCH_TRANSFER",
+        "_id":                tx_id,
+        "type":               "TRANSFER",
         "initiator_id":       req.initiator_id,
         "source_branch":      req.source_branch,
         "source_account_id":  req.source_account_id,
         "target_branch":      req.target_branch,
         "target_account_id":  req.target_account_id,
-        "amount":             req.amount,
-        "state":              "PENDING",
+        "amount":             amount_d128,
+        "state":              "INITIATED",
         "idempotency_key":    req.idempotency_key,
-        "created_at":         datetime.now(timezone.utc),
+        "error":              None,
+        "created_at":         now,
+        "updated_at":         now,
     }
-    tx_result = await ledger_db.global_transactions.insert_one(tx_doc)
-    tx_id = tx_result.inserted_id
+    await ledger_db.transaction_logs.insert_one(tx_doc)
 
-    source_update = None  # track whether funds were locked (needed for rollback)
+    source_locked = False   # tracks whether funds were moved to locked_balance
 
     try:
-        # ── Phase 1: PREPARE ─────────────────────────────────────────────────
-        await ledger_db.global_transactions.update_one(
+        # ── Phase 1: PREPARE — lock source funds atomically ─────────────────
+        await ledger_db.transaction_logs.update_one(
             {"_id": tx_id},
-            {"$set": {"state": "PREPARED", "prepared_at": datetime.now(timezone.utc)}},
+            {"$set": {"state": "PREPARED", "updated_at": datetime.now(timezone.utc)}},
         )
 
-        # Atomic lock: only modifies the document if status=ACTIVE AND balance≥amount.
-        # A single findAndModify — no separate read + write race condition possible.
+        # Single atomic findAndModify — no read-then-write race condition.
+        # Guard: status=ACTIVE AND available_balance >= amount.
         source_update = await source_db.accounts.update_one(
             {
                 "_id":               source_oid,
                 "status":            "ACTIVE",
-                "available_balance": {"$gte": req.amount},
+                "available_balance": {"$gte": amount_d128},
             },
             {"$inc": {
-                "available_balance": -req.amount,
-                "locked_balance":     req.amount,
-            }},
+                "available_balance": to_d128(-req.amount),
+                "locked_balance":    amount_d128,
+            },
+             "$set": {"updated_at": datetime.now(timezone.utc)}},
         )
 
         if source_update.modified_count == 0:
-            # Distinguish "not found" vs "insufficient funds" vs "not active"
             source_check = await source_db.accounts.find_one(
                 {"_id": source_oid},
                 {"status": 1, "available_balance": 1},
@@ -136,71 +147,75 @@ async def process_transfer(req: TransferRequest):
             elif source_check.get("status") != "ACTIVE":
                 raise Exception(f"Source account is not ACTIVE (status: {source_check.get('status')})")
             else:
+                avail = from_d128(source_check.get("available_balance", 0))
                 raise Exception(
-                    f"Insufficient funds: available ${source_check.get('available_balance', 0):.2f}, "
-                    f"requested ${req.amount:.2f}"
+                    f"Insufficient funds: available ${avail:.2f}, requested ${amount_float:.2f}"
                 )
 
+        source_locked = True  # funds are now in locked_balance
+
     except Exception as exc:
-        # ── Phase 2b: ABORT — compensation + ledger update ───────────────────
-        await ledger_db.global_transactions.update_one(
+        # ── Phase 2b: ABORT — compensate + update ledger ────────────────────
+        await ledger_db.transaction_logs.update_one(
             {"_id": tx_id},
             {"$set": {
                 "state":      "ABORTED",
                 "error":      str(exc),
-                "aborted_at": datetime.now(timezone.utc),
+                "updated_at": datetime.now(timezone.utc),
             }},
         )
-        # Compensation: if funds were locked, unlock them
-        if source_update is not None and source_update.modified_count > 0:
+        if source_locked:
+            # Funds were locked — unlock them
             await source_db.accounts.update_one(
                 {"_id": source_oid},
-                {"$inc": {"available_balance": req.amount, "locked_balance": -req.amount}},
+                {"$inc": {
+                    "available_balance": amount_d128,
+                    "locked_balance":    to_d128(-req.amount),
+                },
+                 "$set": {"updated_at": datetime.now(timezone.utc)}},
             )
-        raise HTTPException(status_code=400, detail=f"Transfer aborted during PREPARE: {exc}")
+        raise HTTPException(status_code=400, detail=f"Transfer ABORTED during PREPARE: {exc}")
 
-    # ── Phase 2a: COMMIT ─────────────────────────────────────────────────────
-    # Source funds are locked. Both accounts confirmed ACTIVE. Now finalize atomically.
+    # ── Phase 2a: COMMIT — finalize atomically across both shards ────────────
     try:
         await asyncio.gather(
-            # Debit: remove from locked_balance at source (available already decremented)
+            # Debit: remove from locked_balance at source
             source_db.accounts.update_one(
                 {"_id": source_oid},
-                {"$inc": {"locked_balance": -req.amount}},
+                {"$inc": {"locked_balance": to_d128(-req.amount)},
+                 "$set": {"updated_at": datetime.now(timezone.utc)}},
             ),
             # Credit: add to available_balance at target
             target_db.accounts.update_one(
                 {"_id": target_oid},
-                {"$inc": {"available_balance": req.amount}},
+                {"$inc": {"available_balance": amount_d128},
+                 "$set": {"updated_at": datetime.now(timezone.utc)}},
             ),
         )
-        await ledger_db.global_transactions.update_one(
+        await ledger_db.transaction_logs.update_one(
             {"_id": tx_id},
-            {"$set": {"state": "COMMITTED", "committed_at": datetime.now(timezone.utc)}},
+            {"$set": {"state": "COMMITTED", "updated_at": datetime.now(timezone.utc)}},
         )
     except Exception as exc:
-        # Commit failure is the hardest case in 2PC — requires manual intervention.
-        await ledger_db.global_transactions.update_one(
+        # Commit failure — partial state, needs manual recovery
+        await ledger_db.transaction_logs.update_one(
             {"_id": tx_id},
             {"$set": {
-                "state":      "COMMIT_FAILED",
-                "error":      str(exc),
-                "aborted_at": datetime.now(timezone.utc),
+                "state":      "ABORTED",
+                "error":      f"COMMIT PHASE FAILED: {exc}",
+                "updated_at": datetime.now(timezone.utc),
             }},
         )
         raise HTTPException(
             status_code=500,
-            detail=(
-                f"CRITICAL: Commit phase failed. Transaction {tx_id} is in "
-                f"COMMIT_FAILED state and requires manual recovery."
-            ),
+            detail=f"CRITICAL: Commit phase failed. Transaction {tx_id} requires manual recovery.",
         )
 
     return {
         "message":        "Transfer completed successfully across distributed nodes.",
-        "transaction_id": str(tx_id),
+        "transaction_id": tx_id,
         "phase":          "COMMITTED",
-        "amount":         req.amount,
+        "amount":         amount_float,
         "source_branch":  req.source_branch,
         "target_branch":  req.target_branch,
     }

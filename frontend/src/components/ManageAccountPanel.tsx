@@ -23,7 +23,7 @@ export default function ManageAccountPanel({ account, onClose, onUpdated }: Mana
     setResult(null);
     setConfirm(null);
     try {
-      await bankingService.updateAccountStatus(account.branch_id as Branch, account.id, newStatus);
+      await bankingService.updateAccountStatus(account.branch as Branch, account.id, newStatus);
       setResult({ ok: true, msg: `Account status updated to ${newStatus}.` });
       onUpdated({ ...account, status: newStatus });
     } catch (err: unknown) {
@@ -35,13 +35,13 @@ export default function ManageAccountPanel({ account, onClose, onUpdated }: Mana
   };
 
   const BRANCH_META: Record<string, { icon: string; color: string }> = {
-    north:   { icon: '🏔', color: '#38bdf8' },
-    south:   { icon: '🌴', color: '#fbbf24' },
-    east:    { icon: '🌅', color: '#34d399' },
-    west:    { icon: '🌄', color: '#a78bfa' },
-    central: { icon: '🏛', color: '#d4a843' },
+    NORTH:   { icon: '🏔', color: '#38bdf8' },
+    SOUTH:   { icon: '🌴', color: '#fbbf24' },
+    EAST:    { icon: '🌅', color: '#34d399' },
+    WEST:    { icon: '🌄', color: '#a78bfa' },
+    CENTRAL: { icon: '🏛', color: '#d4a843' },
   };
-  const bm = BRANCH_META[account.branch_id] ?? { icon: '🏦', color: '#94a3b8' };
+  const bm = BRANCH_META[account.branch] ?? { icon: '🏦', color: '#94a3b8' };
 
   return (
     <>
@@ -64,7 +64,7 @@ export default function ManageAccountPanel({ account, onClose, onUpdated }: Mana
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
             <span style={{ fontSize: '1.4rem' }}>{bm.icon}</span>
             <div>
-              <p style={{ margin: 0, fontWeight: 700, color: 'var(--t-primary)' }}>{account.customer_name}</p>
+              <p style={{ margin: 0, fontWeight: 700, color: 'var(--t-primary)' }}>{account.account_title || account.customer_id}</p>
               <p className="mono" style={{ margin: 0, fontSize: '0.72rem', color: 'var(--t-muted)' }}>
                 {account.customer_id}
               </p>
@@ -90,7 +90,7 @@ export default function ManageAccountPanel({ account, onClose, onUpdated }: Mana
             </div>
           </div>
           <p className="mono" style={{ margin: '10px 0 0', fontSize: '0.68rem', color: 'var(--t-faint)', wordBreak: 'break-all' }}>
-            ID: {account.id}
+            {account.account_number || account.id}
           </p>
         </div>
 

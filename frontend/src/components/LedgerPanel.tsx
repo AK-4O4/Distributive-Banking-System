@@ -2,19 +2,18 @@ import { useState, useEffect, useCallback } from 'react';
 import { bankingService, type TransactionLogEntry } from '../services/api';
 
 const STATE_META: Record<string, { label: string; color: string; bg: string; border: string }> = {
-  PENDING:       { label: 'Pending',      color: '#fbbf24', bg: 'rgba(251,191,36,0.1)',  border: 'rgba(251,191,36,0.25)' },
-  PREPARED:      { label: 'Prepared',     color: '#60a5fa', bg: 'rgba(59,130,246,0.1)',  border: 'rgba(59,130,246,0.25)' },
-  COMMITTED:     { label: 'Committed',    color: '#34d399', bg: 'rgba(52,211,153,0.1)',  border: 'rgba(52,211,153,0.25)' },
-  ABORTED:       { label: 'Aborted',      color: '#f87171', bg: 'rgba(239,68,68,0.1)',   border: 'rgba(239,68,68,0.25)' },
-  COMMIT_FAILED: { label: 'Commit Failed',color: '#fb923c', bg: 'rgba(249,115,22,0.1)',  border: 'rgba(249,115,22,0.25)' },
+  INITIATED:  { label: 'Initiated',  color: '#94a3b8', bg: 'rgba(148,163,184,0.1)', border: 'rgba(148,163,184,0.25)' },
+  PREPARED:   { label: 'Prepared',   color: '#60a5fa', bg: 'rgba(59,130,246,0.1)',  border: 'rgba(59,130,246,0.25)' },
+  COMMITTED:  { label: 'Committed',  color: '#34d399', bg: 'rgba(52,211,153,0.1)',  border: 'rgba(52,211,153,0.25)' },
+  ABORTED:    { label: 'Aborted',    color: '#f87171', bg: 'rgba(239,68,68,0.1)',   border: 'rgba(239,68,68,0.25)' },
 };
 
 const BRANCH_META: Record<string, { icon: string; color: string }> = {
-  north:   { icon: '🏔', color: '#38bdf8' },
-  south:   { icon: '🌴', color: '#fbbf24' },
-  east:    { icon: '🌅', color: '#34d399' },
-  west:    { icon: '🌄', color: '#a78bfa' },
-  central: { icon: '🏛', color: '#d4a843' },
+  NORTH:   { icon: '🏔', color: '#38bdf8' },
+  SOUTH:   { icon: '🌴', color: '#fbbf24' },
+  EAST:    { icon: '🌅', color: '#34d399' },
+  WEST:    { icon: '🌄', color: '#a78bfa' },
+  CENTRAL: { icon: '🏛', color: '#d4a843' },
 };
 
 function timeAgo(dateStr: string): string {
@@ -67,11 +66,10 @@ export default function LedgerPanel({ limit = 50 }: LedgerPanelProps) {
           onChange={e => setFilter(e.target.value)}
         >
           <option value="">All Transactions</option>
-          <option value="PENDING">Pending</option>
+          <option value="INITIATED">Initiated</option>
           <option value="PREPARED">Prepared</option>
           <option value="COMMITTED">Committed</option>
           <option value="ABORTED">Aborted</option>
-          <option value="COMMIT_FAILED">Commit Failed</option>
         </select>
 
         <button onClick={fetchTxns} disabled={loading} className="btn btn-ghost">
@@ -189,11 +187,17 @@ export default function LedgerPanel({ limit = 50 }: LedgerPanelProps) {
                     </div>
                   )}
                   <div style={{ display: 'flex', gap: 20, fontSize: '0.72rem', color: 'var(--t-secondary)', flexWrap: 'wrap' }}>
+                    {tx.initiator_id && (
+                      <span>By: {tx.initiator_id}</span>
+                    )}
                     {tx.created_at && (
                       <span>Initiated: {new Date(tx.created_at).toLocaleString()}</span>
                     )}
-                    {tx.committed_at && (
-                      <span style={{ color: '#34d399' }}>Settled: {new Date(tx.committed_at).toLocaleString()}</span>
+                    {tx.updated_at && tx.state === 'COMMITTED' && (
+                      <span style={{ color: '#34d399' }}>Settled: {new Date(tx.updated_at).toLocaleString()}</span>
+                    )}
+                    {tx.idempotency_key && (
+                      <span className="mono" style={{ fontSize: '0.65rem', opacity: 0.7 }}>Key: {tx.idempotency_key}</span>
                     )}
                   </div>
                 </div>

@@ -1,9 +1,9 @@
 import { useAuth } from '../context/AuthContext';
-import Sidebar          from '../components/Sidebar';
-import NodeHealthPanel  from '../components/NodeHealthPanel';
+import Sidebar from '../components/Sidebar';
+import NodeHealthPanel from '../components/NodeHealthPanel';
 import GlobalQueryPanel from '../components/GlobalQueryPanel';
-import LedgerPanel      from '../components/LedgerPanel';
-import AccountForm      from '../components/AccountForm';
+import LedgerPanel from '../components/LedgerPanel';
+import AccountForm from '../components/AccountForm';
 
 export default function AdminDashboard() {
   const { adminSection } = useAuth();
@@ -19,26 +19,25 @@ export default function AdminDashboard() {
           <div className="fade-in" style={{ marginBottom: 28 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 4 }}>
               <h1 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 900, letterSpacing: '-0.02em' }}>
-                {adminSection === 'health'       ? 'Branch Network Status' :
-                 adminSection === 'search'       ? 'Account Search'        :
-                 adminSection === 'ledger'       ? 'Global Transaction Ledger' :
-                                                   'Open New Account'}
+                {adminSection === 'health' ? 'Branch Network Status' :
+                  adminSection === 'search' ? 'Account Search' :
+                    adminSection === 'ledger' ? 'Global Transaction Ledger' :
+                      'Open New Account'}
               </h1>
-              <span className={`badge ${
-                adminSection === 'health'  ? 'badge-teal'    :
-                adminSection === 'search'  ? 'badge-blue'    :
-                adminSection === 'ledger'  ? 'badge-amber'   : 'badge-slate'
-              }`}>
-                {adminSection === 'health'  ? 'Live' :
-                 adminSection === 'search'  ? 'Fan-out Query' :
-                 adminSection === 'ledger'  ? '2PC Log' : 'Distributed Write'}
+              <span className={`badge ${adminSection === 'health' ? 'badge-teal' :
+                adminSection === 'search' ? 'badge-blue' :
+                  adminSection === 'ledger' ? 'badge-amber' : 'badge-slate'
+                }`}>
+                {adminSection === 'health' ? 'Live' :
+                  adminSection === 'search' ? 'Fan-out Query' :
+                    adminSection === 'ledger' ? '2PC Log' : 'Distributed Write'}
               </span>
             </div>
             <p className="section-sub">
-              {adminSection === 'health'  ? 'Live connectivity check — each ping hits the respective MongoDB Atlas branch node.' :
-               adminSection === 'search'  ? 'Fan-out query sent to all 5 branch nodes simultaneously. Results merged by the coordinator.' :
-               adminSection === 'ledger'  ? 'All cross-branch transfers are logged here. Track 2PC state: PENDING → PREPARED → COMMITTED / ABORTED.' :
-               'Provision a new bank account on any branch. Write is routed to that branch\'s dedicated database node.'}
+              {adminSection === 'health' ? 'Live connectivity check — each ping hits the respective MongoDB Atlas branch node.' :
+                adminSection === 'search' ? 'Fan-out query sent to all 5 branch nodes simultaneously. Results merged by the coordinator.' :
+                  adminSection === 'ledger' ? 'All cross-branch transfers are logged here. Track 2PC state: PENDING → PREPARED → COMMITTED / ABORTED.' :
+                    'Provision a new bank account on any branch. Write is routed to that branch\'s dedicated database node.'}
             </p>
           </div>
 
